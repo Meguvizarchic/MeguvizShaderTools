@@ -1,4 +1,33 @@
+<div align="center">
+
+<img src="docs/brand/MeguvizShaderTools.svg" width="96" height="96" alt="MeguvizShaderTools">
+
 # MeguvizShaderTools
+
+**GLSL 编译与 shaderpack 静态验证工具 mgst**
+
+glslang · SPIRV-Tools · 布局反射 · 覆盖检查
+
+<br>
+
+[![License](https://img.shields.io/badge/license-MIT-00AEEC?style=flat-square&labelColor=2d3a55)](LICENSE)
+[![Language](https://img.shields.io/badge/lang-C%2B%2B-DEA584?style=flat-square&labelColor=2d3a55)](https://github.com/Meguvizarchic/MeguvizShaderTools)
+[![Issues](https://img.shields.io/github/issues/Meguvizarchic/MeguvizShaderTools?style=flat-square&labelColor=2d3a55)](https://github.com/Meguvizarchic/MeguvizShaderTools/issues)
+
+[CMake增量消费](#cmake增量消费)
+
+</div>
+
+---
+
+<details>
+<summary><b>目录</b></summary>
+
+- [CMake增量消费](#cmake增量消费)
+
+</details>
+
+---
 
 独立 C++17 host 工具 `mgst`，直接使用锁定 glslang、SPIRV-Tools validator 和
 SPIRV-Reflect 完成 GLSL 编译、静态验证、真实布局反射、ncnn ABI 检查、不可变
