@@ -1,49 +1,34 @@
-# ADR 0001: conservative host contracts
+# ADR 0001：宿主机离线工具契约与边界说明
 
-Status: accepted for the local Windows host candidate, 2026-10-28.
+状态：本地 Windows 宿主机候选版已验收（2026-10-28）。
 
-The host links pinned glslang, SPIRV-Tools validator and SPIRV-Reflect directly.
-No compiler is searched on PATH at runtime. No GPU is enumerated. The source lock
-and native compiler executable hash, version, build configuration and mgst source
-fingerprint participate in the effective toolchain identity.
+## 1. 静态链接工具链与确定性身份
 
-No new JSON or crypto production dependency was authorized. The CLI therefore
-accepts a deliberately restricted JSON grammar: null, booleans, UTF-8 strings,
-arrays, sorted string-keyed objects, and integers in the interoperable range
-[-9007199254740991, 9007199254740991]. Floating JSON numbers are rejected; floating
-specialization values use explicit IEEE bit strings. Duplicate keys, invalid
-UTF-8/surrogates, excessive depth/node count, unsafe integers and trailing input
-fail before any compiler or reflector call. This is a product configuration
-grammar, not a general JSON/schema library. SHA-256 uses the FIPS 180-4 algorithm
-and is compared against independent CPython hashlib boundary and NIST vectors.
+- `mgst` 直接静态链接锁定的 `glslang`、`SPIRV-Tools` 校验器与 `SPIRV-Reflect`，运行期不会在 `PATH` 中搜索外部编译器，也不枚举宿主 GPU 设备。
+- 有效工具链身份（`toolchain_lock_hash`）综合了上游源码锁（`deps.lock.json`）、本地编译器可执行文件哈希与版本号、构建配置及 `mgst` 自身源码指纹。
 
-Canonical form is UTF-8, lexicographically sorted keys, no insignificant spaces,
-no escaped slash, lowercase control escapes, and no trailing newline in the
-hashed representation. Files add one newline. `manifest_hash` hashes the canonical
-manifest excluding only `manifest_hash`. Reflection, source and SPIR-V SHA-256 identities cover exact file bytes, including
-the reflection file's terminal newline. A prior canonical-only reflection hash
-was rejected by Compute's independent file-byte check; that failed run is retained.
+## 2. 受限 JSON 语法与规范化摘要
 
-Requests list a complete include name/content closure. Source and include paths
-must remain inside the request directory, including symlink resolution. No parent
-traversal or absolute input is accepted. Outputs publish from a unique temporary
-directory to a previously nonexistent destination. A failure retains temporary
-diagnostics and cannot replace a valid output. CMake callers select a new build
-output generation when changing a request; an old immutable destination fails.
+由于项目未引入新的第三方 JSON 或加密库，CLI 采用严格受限的配置 JSON 语法（仅作为构建配置语法，不替代通用 JSON/Schema 库）：
 
-ncnn-compat uses pinned resource/helper recipes and explicit effective Options.
-Ordered device macro tokens belong to the target-facts capture contract. Synthetic
-facts are host fixtures only. Exact byte comparison against a target runtime,
-driver execution, numerical equivalence and no-runtime-compiler qualification
-remain blocked pending the Compute/RIFE runner and actual hardware. Ordinary
-runtime compiler fallback remains required. No strip-debug optimization is used.
+- 允许类型：`null`、布尔值、合法 UTF-8 字符串、数组、键有序的字符串键对象，以及互操作安全范围内的整数 `[-9007199254740991, 9007199254740991]`。
+- 拒绝浮点数（浮点特化常量须使用显式 IEEE 位串表示）、重复键、非法 UTF-8 或孤立代理项、超限嵌套深度（`> 64`）与节点数（`> 200,000`）、超限安全范围整数及尾随垃圾字符，且所有检查均在调用编译器或反射器前完成。
+- SHA-256 采用内置 FIPS 180-4 实现，并与独立 CPython `hashlib` 及 NIST 测试向量对齐。
+- **规范化序列化格式**：UTF-8 编码、键按字典序排列、无多余空白、不转义 `/`、控制字符使用小写转义、被哈希的内部表示不带末尾换行；落盘文件末尾统一附加一个 `\n`。
+  - `manifest_hash` 对去掉 `manifest_hash` 自身字段后的规范化清单计算哈希。
+  - 反射文件、源码与 SPIR-V 的 SHA-256 均按磁盘实际文件字节计算（包含 `reflection.json` 末尾的换行符）。此前仅对规范化内存文本做哈希的版本曾被 `MeguvizCompute` 的文件字节校验拒绝，相关失败记录已保留归档。
 
-Only Windows x86-64 has been built in this environment. Linux and macOS presets
-are supplied for native runners; their binaries and cross-host reproducibility
-are not claimed. This limitation prevents a complete S4/S5 profile gate.
+## 3. 路径封闭与原子发布机制
 
-NDK30 libc++ cross-compilation of the RIFE private source copy exposed that
-filesystem::path iteration may yield a temporary path. The shared source helper
-now binds each iteration value as const auto&, retaining the same traversal
-checks. Windows MSVC and Linux libstdc++ acceptance did not establish libc++
-source portability; this raw cross-build failure remains recorded by RIFE.
+- 请求文件必须显式列出完整的 `includes` 名称与内容哈希闭包。源码和全部 include 路径解析符号链接后仍必须停留在 `request.json` 所在目录内部，禁止上级目录穿越（`..`）或绝对路径输入。
+- `compile`、`render-ncnn` 与 `pack` 先写入唯一的临时目录，全部检验通过后再原子发布到尚未存在（或为空目录）的目标路径；失败时保留临时诊断信息，绝不会覆盖已有有效产物。CMake 调用方在请求或输入变化时，通过输入与工具哈希自动切换到新的 `.generations/<hash>` 目录（若原地指向不可变旧目录且身份不一致则会失败拒绝）。
+
+## 4. `ncnn-compat` 配方与跨平台记录
+
+- `ncnn-compat` 复用锁定的资源配置配方（`ncnn-20261020`）和显式 `effective_options`，`target_facts` 负责传递有序的设备宏 token。
+- 在 `MeguvizRIFE` 私有源码交叉编译到 Android NDK 30 `libc++` 时，曾暴露出 `filesystem::path` 迭代在特定实现下可能返回临时对象导致悬垂引用的问题；共享源码辅助逻辑现已改为 `const auto&` 绑定每次迭代项，同时保留原有的目录遍历边界检查。由于 Windows MSVC 与 Linux `libstdc++` 通过不能替代 `libc++` 源码可移植性，该原始交叉编译失败记录已保留归档。
+
+## 适用范围与验证说明
+
+- **环境与平台范围**：当前环境仅完成 Windows x86-64 原生构建与宿主机测试验证；仓库虽提供 Linux 与 macOS 预设供原生构建器使用，但尚不宣称其二进制产物已验证或具备跨宿主机可复现性（因此 `S4`/`S5` 跨宿主门禁暂未闭合）。
+- **真机与性能边界**：合成 `target_facts` 仅作宿主机测试夹具使用。离线包与目标端运行期的逐字节比对、真机 GPU 驱动执行、浮点数值等价性以及“免除运行期编译器”定级仍有待 `MeguvizCompute` / `MeguvizRIFE` 真机测试闭合，现阶段普通运行期编译器回退路径仍须保留，且不启用剥离调试信息的优化选项（`stripDebugInfo = false`）。

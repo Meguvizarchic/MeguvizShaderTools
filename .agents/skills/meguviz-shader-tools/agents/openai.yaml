@@ -1,0 +1,4 @@
+interface:
+  display_name: "MeguvizShaderTools 接入与迁移"
+  short_description: "离线编译 GLSL 到 SPIR-V 并打包校验 Shaderpack"
+  default_prompt: "请使用 $meguviz-shader-tools 检查当前工程，制定最小接入或迁移方案，完成代码适配并运行验证。"
